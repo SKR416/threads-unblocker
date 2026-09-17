@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Threads 訪客完整檢視器",
+  "version": "2.0",
+  "description": "免登入瀏覽 Threads 完整文章與回覆串 — 多層攔截引擎",
+  "permissions": [
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "*://*.threads.net/*",
+    "*://threads.net/*",
+    "*://*.threads.com/*",
+    "*://threads.com/*"
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.threads.net/*",
+        "*://threads.net/*",
+        "*://*.threads.com/*",
+        "*://threads.com/*"
+      ],
+      "css": ["blocker.css"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://*.threads.net/*",
+        "*://threads.net/*",
+        "*://*.threads.com/*",
+        "*://threads.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ]
+}

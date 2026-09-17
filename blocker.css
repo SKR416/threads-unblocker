@@ -1,0 +1,111 @@
+/*
+ * Threads Unblocker — Declarative CSS Overrides
+ *
+ * Injected at document_start via manifest, before any page rendering.
+ * Uses !important to override Threads' dynamically applied styles.
+ *
+ * Layers:
+ *   1. Login dialog / modal suppression
+ *   2. Scroll-lock prevention (body + html + #scrollview)
+ *   3. Content interactivity guarantee
+ *   4. Full-screen overlay / backdrop neutralisation
+ */
+
+/* ============================================
+   1. Login Dialog Suppression
+   ============================================ */
+[role="dialog"],
+[aria-modal="true"],
+[data-testid*="login" i],
+[data-testid*="signup" i] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  clip-path: inset(50%) !important;
+  position: absolute !important;
+}
+
+/* ============================================
+   2. Scroll-Lock Prevention
+   
+   Threads locks scrolling in THREE ways:
+   a) overflow:hidden on html/body
+   b) position:fixed on body (pins viewport)
+   c) overflow:hidden on #scrollview container
+   ============================================ */
+html, body,
+html[style], body[style],
+html[class], body[class] {
+  overflow: visible !important;
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+  overscroll-behavior: auto !important;
+  position: static !important;
+  width: auto !important;
+  top: auto !important;
+  touch-action: auto !important;
+  height: auto !important;
+  min-height: 100vh !important;
+}
+
+/* Threads' internal scroll container */
+#scrollview,
+div[scrollable="true"] {
+  overflow: auto !important;
+  overflow-y: auto !important;
+  pointer-events: auto !important;
+  max-height: none !important;
+  height: auto !important;
+}
+
+/* ============================================
+   3. Content Interactivity
+   Ensure the main content tree can receive
+   pointer events even if a modal tried to
+   steal them.
+   ============================================ */
+body > div:first-child,
+#__next,
+#silo_root,
+[id*="root"],
+main,
+[role="main"] {
+  pointer-events: auto !important;
+  overflow: visible !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+}
+
+/* ============================================
+   4. Full-Screen Overlay / Backdrop Removal
+   
+   Threads renders a fixed overlay behind the
+   login modal that captures all pointer events.
+   We must either hide it or let events pass
+   through (pointer-events: none).
+   ============================================ */
+
+/* Approach A: Hide portal containers wrapping dialogs (Chrome 105+) */
+body > div:has(> [role="dialog"]),
+body > div:has(> [aria-modal="true"]),
+body > div > div:has(> [role="dialog"]),
+body > div > div:has(> [aria-modal="true"]),
+div:has(> [role="dialog"]):not(body):not(html):not(#__next):not([id="root"]),
+div:has(> [aria-modal="true"]):not(body):not(html):not(#__next):not([id="root"]) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Approach B: Any fixed full-screen div with high z-index that isn't content */
+div[style*="position: fixed"][style*="inset: 0"],
+div[style*="position:fixed"][style*="inset:0"],
+div[style*="position: fixed"][style*="inset: 0px"],
+div[style*="position:fixed"][style*="inset:0px"] {
+  pointer-events: none !important;
+}
