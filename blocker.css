@@ -13,9 +13,18 @@
 
 /* ============================================
    1. Login Dialog Suppression
+
+   CSS cannot compare image dimensions, so we only
+   suppress elements with explicit login/signup
+   data-testid labels here.
+
+   Generic [role="dialog"] suppression is handled
+   entirely by the JS layer (content.js), which can
+   inspect image naturalWidth/naturalHeight to
+   distinguish login modals from media lightboxes.
    ============================================ */
-[role="dialog"],
-[aria-modal="true"],
+
+/* Elements explicitly labelled as login/signup */
 [data-testid*="login" i],
 [data-testid*="signup" i] {
   display: none !important;
@@ -90,13 +99,17 @@ main,
    through (pointer-events: none).
    ============================================ */
 
-/* Approach A: Hide portal containers wrapping dialogs (Chrome 105+) */
-body > div:has(> [role="dialog"]),
-body > div:has(> [aria-modal="true"]),
-body > div > div:has(> [role="dialog"]),
-body > div > div:has(> [aria-modal="true"]),
-div:has(> [role="dialog"]):not(body):not(html):not(#__next):not([id="root"]),
-div:has(> [aria-modal="true"]):not(body):not(html):not(#__next):not([id="root"]) {
+/*
+  Approach A: Portal containers wrapping login/signup dialogs.
+  Only targets elements with explicit login/signup testid labels.
+  Generic [role="dialog"] detection is handled by JS (content.js)
+  because CSS cannot distinguish avatar images from media images.
+  (Chrome 105+ / Edge 105+ required for :has())
+*/
+body > div:has(> [data-testid*="login" i]),
+body > div:has(> [data-testid*="signup" i]),
+body > div > div:has(> [data-testid*="login" i]),
+body > div > div:has(> [data-testid*="signup" i]) {
   display: none !important;
   visibility: hidden !important;
   pointer-events: none !important;

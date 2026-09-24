@@ -62,8 +62,12 @@
    * if Threads removes <link> / <style> nodes.
    * ────────────────────────────────────────────────────────── */
   const CRITICAL_CSS = [
-    // Hide login modals
-    '[role="dialog"],[aria-modal="true"]{',
+    // Suppress only explicit login/signup testid elements.
+    // Generic [role="dialog"] suppression is intentionally omitted here:
+    // CSS cannot distinguish a 45px avatar (login modal) from a large
+    // media image (lightbox). The JS layer handles dialog suppression
+    // with precise image-dimension checks.
+    '[data-testid*="login"],[data-testid*="signup"]{',
     "display:none!important;visibility:hidden!important;",
     "pointer-events:none!important;opacity:0!important}",
     // Unlock body/html scrolling
@@ -124,6 +128,70 @@
   }
 
   /**
+   * Determine whether a dialog/modal element should be suppressed.
+   *
+   * Key insight from real-world DOM inspection:
+   *   Threads' login dialog contains characteristic text strings like
+   *   「透過 Threads 暢所欲言」「使用 Instagram 帳號繼續」 that are
+   *   NEVER present in a media lightbox. Conversely, the login modal
+   *   also contains a 45 × 45 px avatar <img>, which means ANY
+   *   img-presence-based heuristic will fail.
+   *
+   * Strategy — login-text fingerprinting:
+   *   1. URL fast-path: if the current URL contains "/media", the user
+   *      is in the media viewer → always allow the dialog.
+   *   2. <video> present → media lightbox → always allow.
+   *   3. Dialog text contains any of the known login/signup phrases
+   *      (multi-language) → suppress it.
+   *   4. Otherwise → allow (default-open is safer than default-close).
+   */
+
+  /** Characteristic phrases found inside Threads' login modal across locales */
+  const LOGIN_FINGERPRINTS = [
+    // Chinese (Traditional & Simplified)
+    "透過 Threads 暢所欲言",
+    "使用 Instagram 帳號繼續",
+    "改以用戶名稱登入",
+    "加入 Threads",
+    "使用 Meta 帳號加入",
+    // English
+    "Say more with Threads",
+    "Continue with Instagram",
+    "Log in with username",
+    "Join Threads",
+    // Japanese
+    "Threadsでもっと発信しよう",
+    "Instagramで続ける",
+    // Korean
+    "Threads에서 더 많이 소통하세요",
+    "Instagram으로 계속하기",
+  ];
+
+  function isLoginDialog(el) {
+    // Fast-path: explicit data-testid labels → always suppress
+    if (el.matches?.('[data-testid*="login" i], [data-testid*="signup" i]'))
+      return true;
+
+    // Fast-path: if URL says /media, this is the media viewer → never suppress
+    if (location.pathname.includes("/media")) return false;
+
+    // Video → definitely a media lightbox → never suppress
+    if (el.querySelector("video")) return false;
+
+    // Check dialog text for login-specific fingerprints
+    const text = el.textContent || "";
+    for (const phrase of LOGIN_FINGERPRINTS) {
+      if (text.includes(phrase)) return true;
+    }
+
+    // No login fingerprint matched → default to allowing the dialog
+    // (safer to show an unknown dialog than to accidentally hide content)
+    return false;
+  }
+
+
+
+  /**
    * Walk up from a dialog element to find its portal / overlay
    * container and neutralise it. Limits walk to 4 ancestors to
    * avoid accidentally hiding the React root.
@@ -146,13 +214,19 @@
     }
   }
 
+
   /**
-   * Detect full-screen fixed-position divs that act as dark
-   * backdrops or invisible click-catchers behind modals.
+   * Detect full-screen fixed-position divs that act as backdrops
+   * behind LOGIN modals.
+   *
+   * Only returns true when the overlay wraps a confirmed login dialog.
+   * The translucent-background heuristic was removed because it caused
+   * false positives on legitimate page elements, breaking the entire UI.
+   * Login backdrops are already handled by neutralisePortal() which
+   * neutralises the entire portal root.
    */
   function isFullScreenOverlay(el) {
     if (el.tagName !== "DIV") return false;
-    // Skip elements that clearly hold page content
     if (el.querySelector("article, main, nav, header, footer")) return false;
 
     try {
@@ -164,22 +238,19 @@
       const coversViewport =
         r.width >= window.innerWidth * 0.9 &&
         r.height >= window.innerHeight * 0.9;
-
       if (!coversViewport) return false;
 
-      // It's an overlay if it wraps a dialog OR has a translucent bg
-      const hasDialog = !!el.querySelector(
+      // Only flag as overlay if it contains a confirmed login dialog
+      const dialog = el.querySelector(
         '[role="dialog"],[aria-modal="true"]'
       );
-      const bg = cs.backgroundColor;
-      const isTranslucentBg =
-        bg && bg.includes("rgba") && !bg.endsWith(", 0)");
-
-      return hasDialog || isTranslucentBg;
+      return dialog ? isLoginDialog(dialog) : false;
     } catch (_) {
       return false;
     }
   }
+
+
 
   /**
    * Detect invisible "click-catcher" divs — fixed divs with no
@@ -210,6 +281,7 @@
     }
   }
 
+
   /**
    * Process a newly-added DOM node: if it is (or contains) a
    * login dialog or overlay, neutralise it.
@@ -217,21 +289,23 @@
   function processNode(node) {
     if (node.nodeType !== Node.ELEMENT_NODE) return;
 
-    // Direct dialog/modal check
+    // Direct dialog/modal check — only neutralise login dialogs
     const isDialog = node.matches?.('[role="dialog"], [aria-modal="true"]');
-    if (isDialog) {
+    if (isDialog && isLoginDialog(node)) {
       neutralise(node);
       neutralisePortal(node);
-      log("Dialog neutralised (direct)", node);
+      log("Login dialog neutralised (direct)", node);
     }
 
-    // Descendant match
+    // Descendant dialog check — only neutralise login dialogs
     node
       .querySelectorAll?.('[role="dialog"], [aria-modal="true"]')
       .forEach((d) => {
-        neutralise(d);
-        neutralisePortal(d);
-        log("Dialog neutralised (descendant)", d);
+        if (isLoginDialog(d)) {
+          neutralise(d);
+          neutralisePortal(d);
+          log("Login dialog neutralised (descendant)", d);
+        }
       });
 
     // Full-screen overlay detection
@@ -246,6 +320,7 @@
       log("Click-catcher passthrough", node);
     }
   }
+
 
   /* ──────────────────────────────────────────────────────────
    * Layer D — Scroll-Lock Removal
@@ -310,14 +385,17 @@
       }
     }
 
-    // Also check for any fixed-position divs across the page
+    // Only neutralise dialogs that are confirmed login prompts
     document
       .querySelectorAll('[role="dialog"], [aria-modal="true"]')
       .forEach((d) => {
-        neutralise(d);
-        neutralisePortal(d);
+        if (isLoginDialog(d)) {
+          neutralise(d);
+          neutralisePortal(d);
+        }
       });
   }
+
 
   /* ──────────────────────────────────────────────────────────
    * Layer E — SSR Snapshot & Content Restoration
